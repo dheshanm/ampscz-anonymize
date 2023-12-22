@@ -17,16 +17,17 @@ try:
 except ValueError:
     pass
 
-import logging
-from typing import Dict
 import json
+import logging
+import random
+from typing import Dict
 
-from rich.logging import RichHandler
 import pandas as pd
+from rich.logging import RichHandler
 
 from anonymizer.helpers import utils
 
-MODULE_NAME = "anonymizer_subject_map"
+MODULE_NAME = "anonymizer_consolidate_dates"
 
 console = utils.get_console()
 
@@ -51,7 +52,7 @@ def get_subject_date_offset_map(source: Path) -> Dict[str, int]:
         Dict[str, int]: A dictionary mapping subjects to their corresponding date offsets.
     """
     df = pd.read_csv(source)
-    subject_date_offset_map: Dict[str, str] = {}
+    subject_date_offset_map: Dict[str, int] = {}
 
     subjects = df["subject"].unique().tolist()
     for subject in subjects:
@@ -60,6 +61,27 @@ def get_subject_date_offset_map(source: Path) -> Dict[str, int]:
         ].tolist()[0]
 
     return subject_date_offset_map
+
+
+def get_addons_subjects(config_file: Path) -> Dict[str, int]:
+    """
+    Retrieves the list of subjects from the configuration file.
+
+    Args:
+        config_file (Path): The path to the configuration file.
+
+    Returns:
+        List[str]: The list of subjects extracted from the configuration file.
+    """
+    config_params = utils.config(config_file, "addons")
+
+    addon_subjects = config_params["dates"]
+    addon_subjects = [s.strip() for s in addon_subjects.split(",")]
+
+    possible_offsets = [-14, -7, 7, 14]
+    subject_dates_map = {s: random.choice(possible_offsets) for s in addon_subjects}
+
+    return subject_dates_map
 
 
 def generate_subject_map(config_file: Path) -> None:
@@ -89,6 +111,11 @@ def generate_subject_map(config_file: Path) -> None:
 
         subjects_map = get_subject_date_offset_map(source)
         subject_date_offset_map.update(subjects_map)
+
+    logger.info("Adding addon subjects...")
+    addon_subjects = get_addons_subjects(config_file)
+    logger.info(f"Found {len(addon_subjects)} addon subjects")
+    subject_date_offset_map.update(addon_subjects)
 
     subject_date_map_path = mappings_root / "subject_date_mapping.json"
     logger.info(f"Writing subject date mapping to {subject_date_map_path}...")

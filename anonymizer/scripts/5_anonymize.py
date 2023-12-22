@@ -129,7 +129,11 @@ def generate_anoymized_file_name(
     site_id = site_map[site]
     subject_id = subject_map[subject]
 
-    return f"{site_id}-{subject_id}-{others}"
+    anonymized_file_name = f"{site_id}-{subject_id}-{others}"
+
+    # logger.debug(f"{file_name} -> {anonymized_file_name}")
+
+    return anonymized_file_name
 
 
 def get_output_path(file_path: Path, data_root: Path, output_root: Path) -> Path:
@@ -236,9 +240,7 @@ def anonymize_csv(
     except ValueError as e:
         logger.warning(f"Ignoring file: {file_path}: {e}")
 
-    anonymized_name = output_name
     output_path = output_path.parent / anonymized_name
-
     df.to_csv(output_path, index=False)
 
 

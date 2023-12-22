@@ -1,6 +1,6 @@
 # Anonymize DPDash Formatted Data
 
-This script anonymizes DPDash formatted data
+This script anonymizes DPDash formatted data for AMPSCZ.
 
 ## Usage
 

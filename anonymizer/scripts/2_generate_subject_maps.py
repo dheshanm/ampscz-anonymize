@@ -92,7 +92,7 @@ def get_anonymized_subject_id(
     return anonmymized_subject_code
 
 
-def get_subject_map(subjects: List[str], site_map: Dict[str, str]) -> Dict[str, str]:
+def get_subject_map(subjects: Set[str], site_map: Dict[str, str]) -> Dict[str, str]:
     """
     Generates a subject map that maps original subject IDs to anonymized subject IDs.
 
