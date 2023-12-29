@@ -19,7 +19,7 @@ except ValueError:
 
 import logging
 import os
-from typing import Dict, Set
+from typing import Dict, Set, Optional
 import warnings
 
 from rich.logging import RichHandler
@@ -54,7 +54,10 @@ WARNINGS: Set[str] = set()
 
 
 def get_anonymized_date(
-    row: pd.Series, col: str, subject_date_offset_map: Dict[str, int]
+    row: pd.Series,
+    col: str,
+    subject_date_offset_map: Dict[str, int],
+    subject_id: Optional[str] = None,
 ) -> str:
     """
     Get the anonymized date based on the subject's date offset map.
@@ -70,7 +73,14 @@ def get_anonymized_date(
     Raises:
         None
     """
-    subject = row["subject_id"]
+    if subject_id is None or len(subject_id) != 7:
+        try:
+            subject = row["subject_id"]
+        except KeyError:
+            return row[col]
+    else:
+        subject = subject_id
+
     date = row[col]
 
     if subject not in subject_date_offset_map:
@@ -83,13 +93,43 @@ def get_anonymized_date(
     offset = subject_date_offset_map[subject]
 
     try:
-        new_date = (pd.to_datetime(date) + pd.DateOffset(days=offset)).strftime(
-            "%Y-%m-%d"
-        )
+        new_date: pd.Timestamp = pd.to_datetime(date) + pd.DateOffset(days=offset)
+
+        # Check if the new date has time information.
+        # If so, preserve the time information.
+        if col == "timeofday":
+            new_date = new_date.strftime("%H:%M:%S")  # type: ignore
+        elif new_date.time() != pd.Timestamp("00:00:00").time():
+            new_date = new_date.strftime("%Y-%m-%d %H:%M:%S")  # type: ignore
+        else:
+            new_date = new_date.strftime("%Y-%m-%d")  # type: ignore
     except ValueError:
         return date
 
-    return new_date
+    return str(new_date)
+
+
+def get_subject_id_from_filename(file_name: str) -> Optional[str]:
+    """
+    Get the subject ID from the given file name.
+
+    Args:
+        file_name (str): The file name.
+
+    Returns:
+        str: The subject ID.
+
+    Raises:
+        ValueError: If the file name is invalid.
+    """
+    # template: site-subject-*.csv
+    try:
+        parts = file_name.split("-")
+        subject = parts[1]
+    except IndexError:
+        return None
+
+    return subject
 
 
 def generate_anoymized_file_name(
@@ -157,6 +197,7 @@ def anonymize_df(
     subject_map: Dict[str, str],
     site_map: Dict[str, str],
     subject_date_offset_map: Dict[str, int],
+    subject_id: Optional[str] = None,
 ) -> pd.DataFrame:
     """
     Anonymizes a DataFrame by replacing sensitive information with anonymized values.
@@ -172,25 +213,32 @@ def anonymize_df(
         pd.DataFrame: The anonymized DataFrame.
     """
     # anonymize date
-    date_cols = [col for col in df.columns if "date" in col]
+    # date_cols = [col for col in df.columns if "date" in col]
 
-    for col in date_cols:
+    for col in df.columns:
         df[col] = df.apply(
-            lambda row: get_anonymized_date(row, col, subject_date_offset_map), axis=1
+            lambda row: get_anonymized_date(
+                row, col, subject_date_offset_map, subject_id
+            ),
+            axis=1,
         )
 
     # anonymize subject id
     try:
-        subject_col = [c for c in df.columns if "subject" in c.lower()]
+        subject_cols = [c for c in df.columns if "subject" in c.lower()]
 
-        if not subject_col:
+        if not subject_cols:
             raise KeyError("Subject column not found")
         else:
-            subject_col = subject_col[0]
-            df[subject_col] = df[subject_col].map(subject_map)
+            # if len(subject_cols) > 1:
+            #     logger.warning(
+            #         f"Found {len(subject_cols)} subject columns: {subject_cols}"
+            #     )
+            for subject_col in subject_cols:
+                df[subject_col] = df[subject_col].map(subject_map)
 
-            # drop rows with invalid subject id
-            df.dropna(subset=[subject_col], inplace=True)
+                # drop rows with invalid subject id
+                df.dropna(subset=[subject_col], inplace=True)
 
     except KeyError:
         pass
@@ -226,8 +274,9 @@ def anonymize_csv(
     Returns:
         None
     """
-    df = pd.read_csv(file_path)
-    df = anonymize_df(df, subject_map, site_map, subject_date_offset_map)
+    df = pd.read_csv(file_path, dtype=str)
+    subject_id = get_subject_id_from_filename(file_path.name)
+    df = anonymize_df(df, subject_map, site_map, subject_date_offset_map, subject_id)
 
     output_path = get_output_path(file_path, data_root, output_root)
     output_path.parent.mkdir(parents=True, exist_ok=True)
@@ -239,6 +288,7 @@ def anonymize_csv(
         )
     except ValueError as e:
         logger.warning(f"Ignoring file: {file_path}: {e}")
+        return
 
     output_path = output_path.parent / anonymized_name
     df.to_csv(output_path, index=False)
