@@ -158,6 +158,13 @@ def generate_site_map(config_file: Path) -> None:
     site_map = get_site_map(sites)
     site_map["combined"] = "combined"
 
+    skip_site_map = bool(mapping_config["skip_site_map"])
+    if skip_site_map:
+        logger.info("Skipping site map generation...")
+
+        for site in sites:
+            site_map[site] = site
+
     mapping_dest = mappings_root / "site_mapping.json"
 
     logger.info(f"Writing site mapping to {mapping_dest}...")
